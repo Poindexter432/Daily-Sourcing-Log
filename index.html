@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Sourcing Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper: #F3EFE4;
+    --paper-2: #ECE5D3;
+    --navy: #1F3A5F;
+    --rust: #A1462E;
+    --ink: #2A2620;
+    --ink-soft: #6B6356;
+    --line: #C9BFA8;
+    --gold: #B8860B;
+    --green: #3E5C3A;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background: var(--paper);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 3px);
+    color: var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+  }
+  .wrap{ max-width: 760px; margin:0 auto; padding: 28px 18px 80px; }
+
+  .masthead{
+    text-align:center;
+    border-bottom: 3px double var(--navy);
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+  }
+  .masthead .kicker{
+    font-family:'Special Elite', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--rust);
+    text-transform: uppercase;
+  }
+  .masthead h1{
+    font-family:'Special Elite', monospace;
+    font-size: 28px;
+    margin: 6px 0 4px;
+    color: var(--navy);
+    letter-spacing: 1px;
+  }
+  .tagline{
+    text-align:center;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 20px;
+    font-style: italic;
+  }
+
+  .tabs{
+    display:flex;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab{
+    font-family:'Special Elite', monospace;
+    background:none;
+    border:none;
+    padding: 10px 4px;
+    margin-right: 22px;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    color: var(--ink-soft);
+    cursor:pointer;
+    position:relative;
+    top:1px;
+  }
+  .tab.active{ color: var(--navy); border-bottom: 2px solid var(--rust); }
+  .tab:hover{ color: var(--navy); }
+  .tab:focus-visible{ outline: 2px solid var(--navy); outline-offset: 2px; }
+
+  .loading{ text-align:center; padding: 60px 0; color: var(--ink-soft); font-family:'Special Elite', monospace; }
+
+  /* category card */
+  .lane{
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    margin-bottom: 16px;
+    overflow:hidden;
+  }
+  .lane-head{
+    display:flex;
+    align-items:baseline;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(31,58,95,0.04);
+  }
+  .lane-num{
+    font-family:'Special Elite', monospace;
+    color: var(--rust);
+    font-size: 13px;
+  }
+  .lane-title{
+    font-family:'Special Elite', monospace;
+    font-size: 15px;
+    color: var(--navy);
+    flex: 1;
+  }
+  .lane-sub{
+    font-size: 11px;
+    color: var(--ink-soft);
+    width:100%;
+    margin-top: 2px;
+  }
+  .lane-progress{
+    font-family:'Courier Prime', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .lane-body{ padding: 6px 14px 10px; }
+
+  .item{
+    display:flex;
+    align-items:flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px dashed var(--line);
+    cursor:pointer;
+  }
+  .item:last-child{ border-bottom:none; }
+  .item input[type=checkbox]{
+    margin-top: 3px;
+    width: 16px; height:16px;
+    accent-color: var(--green);
+    flex-shrink:0;
+  }
+  .item label{
+    font-size: 13.5px;
+    line-height: 1.5;
+    cursor:pointer;
+  }
+  .item.checked label{
+    color: var(--ink-soft);
+    text-decoration: line-through;
+    text-decoration-color: var(--rust);
+  }
+  .item a{ color: var(--navy); text-decoration: underline; text-decoration-color: var(--line); }
+  .item a:hover{ text-decoration-color: var(--navy); }
+  .src-tag{
+    display:inline-block;
+    font-family:'Courier Prime', monospace;
+    font-size: 10px;
+    letter-spacing:0.5px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .src-fl{ background: rgba(161,70,46,0.12); color: var(--rust); }
+  .src-mo{ background: rgba(31,58,95,0.12); color: var(--navy); }
+
+  .footer-bar{
+    margin-top: 22px;
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .session-count{
+    font-family:'Courier Prime', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .session-count b{ color: var(--navy); }
+  .reset-btn{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    background:none;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor:pointer;
+  }
+  .reset-btn:hover{ border-color: var(--rust); color: var(--rust); }
+
+  /* deal tracker */
+  .deal-toolbar{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom: 16px; flex-wrap:wrap; gap:10px;
+  }
+  .deal-summary{ font-size: 12.5px; color: var(--ink-soft); line-height:1.5; }
+  .deal-summary strong{ font-family:'Courier Prime', monospace; color: var(--navy); }
+  .add-btn{
+    font-family:'Special Elite', monospace;
+    font-size: 12.5px;
+    background: var(--navy);
+    color: var(--paper);
+    border:none;
+    padding: 9px 16px;
+    border-radius: 3px;
+    cursor:pointer;
+    letter-spacing: 0.5px;
+  }
+  .add-btn:hover{ background: #16304f; }
+
+  .deal-card{
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .deal-card-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap: 8px;
+  }
+  .deal-addr{ font-family:'Special Elite', monospace; font-size: 14px; color: var(--ink); }
+  .badge{
+    font-family:'Courier Prime', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .badge-pin{ background: rgba(62,92,58,0.15); color: var(--green); }
+  .badge-pass{ background: rgba(161,70,46,0.15); color: var(--rust); }
+  .badge-research{ background: rgba(184,134,11,0.15); color: var(--gold); }
+  .badge-auction{ background: rgba(31,58,95,0.15); color: var(--navy); }
+
+  .deal-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px 14px;
+    margin: 10px 0 6px;
+    font-family:'Courier Prime', monospace;
+    font-size: 12px;
+  }
+  .deal-grid div span{ display:block; color: var(--ink-soft); font-size: 10px; text-transform:uppercase; }
+  .deal-next{ font-size: 12.5px; margin-top: 6px; color: var(--ink); }
+  .deal-next b{ color: var(--rust); }
+  .deal-actions{ margin-top: 8px; display:flex; gap: 10px; }
+  .link-btn{
+    font-size: 11.5px;
+    background:none; border:none; color: var(--ink-soft);
+    cursor:pointer; text-decoration: underline;
+    padding:0;
+  }
+  .link-btn:hover{ color: var(--navy); }
+  .link-btn.danger:hover{ color: var(--rust); }
+
+  .empty{
+    text-align:center;
+    padding: 40px 16px;
+    color: var(--ink-soft);
+    font-size: 13px;
+    border: 1px dashed var(--line);
+    border-radius: 2px;
+  }
+
+  /* modal form */
+  .modal-backdrop{
+    position:fixed; inset:0; background: rgba(20,18,14,0.5);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index: 50;
+  }
+  .modal{
+    background: var(--paper);
+    width:100%; max-width: 480px;
+    border-radius: 8px 8px 0 0;
+    padding: 20px 18px 24px;
+    max-height: 88vh; overflow-y:auto;
+  }
+  @media (min-width: 540px){
+    .modal-backdrop{ align-items:center; }
+    .modal{ border-radius: 6px; }
+  }
+  .modal h3{ font-family:'Special Elite', monospace; color: var(--navy); margin: 0 0 14px; font-size: 16px; }
+  .field{ margin-bottom: 12px; }
+  .field label{ display:block; font-size: 11px; color: var(--ink-soft); text-transform:uppercase; margin-bottom: 4px; letter-spacing:0.5px; }
+  .field input, .field select, .field textarea{
+    width:100%;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size: 13.5px;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: #fff;
+    color: var(--ink);
+  }
+  .field textarea{ resize: vertical; min-height: 50px; }
+  .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap: 10px; margin-top: 16px; }
+  .btn-secondary{
+    background:none; border:1px solid var(--line); color: var(--ink-soft);
+    padding: 9px 16px; border-radius: 3px; cursor:pointer; font-size: 12.5px;
+  }
+  .btn-primary{
+    background: var(--green); color: #fff; border:none;
+    padding: 9px 16px; border-radius: 3px; cursor:pointer; font-size: 12.5px; font-family:'Special Elite', monospace;
+  }
+
+  .overlay{
+    position: fixed; inset:0; display:none; align-items:center; justify-content:center;
+    background: rgba(20,18,14,0.35); z-index: 60;
+  }
+  .overlay.show{ display:flex; }
+  .big-stamp{
+    font-family:'Special Elite', monospace;
+    font-size: 30px;
+    color: var(--rust);
+    border: 4px solid var(--rust);
+    padding: 14px 26px;
+    transform: rotate(-6deg);
+    border-radius: 6px;
+    background: rgba(243,239,228,0.95);
+    text-align:center;
+  }
+  .big-stamp small{ display:block; font-size: 11px; color: var(--ink-soft); margin-top: 4px; letter-spacing:1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <div class="kicker">Jerry — Real Estate Sourcing</div>
+    <h1>Daily Sourcing Log</h1>
+  </div>
+  <p class="tagline">Run this every morning before you touch anything else. Four lanes, no exceptions.</p>
+  <p style="text-align:center; font-family:'Courier Prime',monospace; font-size:11px; margin:-12px 0 18px; color:var(--ink-soft);">
+    <span id="syncStatus">Connecting…</span>
+  </p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tabLogBtn" role="tab" aria-selected="true" type="button">Sourcing Log</button>
+    <button class="tab" id="tabDealsBtn" role="tab" aria-selected="false" type="button">Deal Tracker</button>
+  </div>
+
+  <div id="app"><div class="loading">Loading your log…</div></div>
+  <div id="dealApp" style="display:none;"><div class="loading">Loading your deals…</div></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="big-stamp">LOGGED ✓<small id="stampDate"></small></div>
+</div>
+
+<script>
+(function(){
+  const categories = [
+    { id: 'fsbo',  number: '01', title: 'FSBO Sweep',           sub: 'Owner-listed properties, no agent in the middle' },
+    { id: 'dist',  number: '02', title: 'Distress Lists',       sub: 'County & court records on sellers already under pressure — FL and MO' },
+    { id: 'boots', number: '03', title: 'Boots on the Ground',  sub: 'Eyes on the street — you or your field contact' },
+    { id: 'out',   number: '04', title: 'Outreach & Follow-Up', sub: "Turn today's list into tomorrow's contract" },
+  ];
+
+  const items = [
+    { id:'fsbo-1', cat:'fsbo', html:"Scan Zillow's FSBO filter for new listings in your target zips" },
+    { id:'fsbo-2', cat:'fsbo', html:'Check Facebook Marketplace and local groups for "must sell" posts' },
+    { id:'fsbo-3', cat:'fsbo', html:'Check FSBO.com and Craigslist for new owner-listed posts' },
+    { id:'fsbo-4', cat:'fsbo', html:'Flag anything with motivated language — as-is, must sell, no agents' },
+
+    { id:'dist-1', cat:'dist', html:'<span class="src-tag src-fl">FL</span>Pull new probate filings on <a href="https://www.floridapublicnotices.com/" target="_blank" rel="noopener">floridapublicnotices.com</a> — filter keyword "Probate Division"' },
+    { id:'dist-2', cat:'dist', html:'<span class="src-tag src-fl">FL</span>Check the Ocala Star-Banner for new Notice to Creditors publications' },
+    { id:'dist-3', cat:'dist', html:'<span class="src-tag src-fl">FL</span>Check Marion County Tax Collector for new tax deed / delinquent listings — reach owners pre-auction' },
+    { id:'dist-4', cat:'dist', html:'<span class="src-tag src-mo">MO</span>Search <a href="https://www.courts.mo.gov/casenet/" target="_blank" rel="noopener">Case.net</a> — case type "Probate," county "Boone," filtered by recent filing date' },
+    { id:'dist-5', cat:'dist', html:'<span class="src-tag src-mo">MO</span>Check Columbia Missourian legal notices for Boone County Probate Division filings' },
+    { id:'dist-6', cat:'dist', html:'<span class="src-tag src-mo">MO</span>Check <a href="https://www.boonemo.gov/collector/real-estate-tax/delinquent.asp" target="_blank" rel="noopener">Boone County Collector</a> delinquent tax certificate list (published ~3 weeks before the August sale)' },
+    { id:'dist-7', cat:'dist', html:'Pull newly expired or withdrawn MLS listings in either target area' },
+
+    { id:'boots-1', cat:'boots', html:'Drive one new target neighborhood — or send your field contact' },
+    { id:'boots-2', cat:'boots', html:'Log the address of every vacant or distressed-looking house' },
+    { id:'boots-3', cat:'boots', html:'Snap a photo of anything worth a second look' },
+    { id:'boots-4', cat:'boots', html:"Send today's finds to, or get them from, your field contact" },
+
+    { id:'out-1', cat:'out', html:'Mail or call every new lead pulled from today\'s Distress Lists pass' },
+    { id:'out-2', cat:'out', html:'Follow up with anyone from the last 3 days who hasn\'t responded' },
+    { id:'out-3', cat:'out', html:'Update the Deal Tracker with today\'s status changes' },
+    { id:'out-4', cat:'out', html:'Text or call one cash buyer to keep the relationship warm' },
+  ];
+
+  const sampleDeals = [
+    { id:'d1', address:'1002 W Silver Springs Pl', city:'Ocala, FL', status:'pin', asking:'100000', arv:'150000', maxOffer:'60000', next:'Negotiate owner down to $55K–$65K; verify zoning on former duplex configuration' },
+    { id:'d2', address:'2419 NE 29th Ter', city:'Ocala, FL', status:'research', asking:'', arv:'280000', maxOffer:'170000', next:'Verify roof and HVAC age before firming up offer' },
+    { id:'d3', address:'10875 SW 79th Ave', city:'Ocala, FL (Palm Cay 55+)', status:'research', asking:'', arv:'165000', maxOffer:'88000', next:'Confirm pre-foreclosure case status, reach heir Kayla Hanley-Fernicola' },
+    { id:'d4', address:'5144 SW 181st Ct', city:'Dunnellon, FL', status:'research', asking:'', arv:'142000', maxOffer:'68000', next:'Well/septic verification; out-of-county attorney is a motivation signal — contact PR Luana Powell' },
+  ];
+
+  // ---------- Supabase config ----------
+  const SUPABASE_URL = 'https://mvmddsugxtiozjhdzpvi.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12bWRkc3VneHRpb3pqaGR6cHZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NTM5NzMsImV4cCI6MjA5ODQyOTk3M30.3oXxlnInMuE_tAXt8eUlFDa0qTL80OCP109q3tTaE1I';
+  const REST_URL = SUPABASE_URL + '/rest/v1/app_data';
+
+  function setSyncStatus(state){
+    const el = document.getElementById('syncStatus');
+    if (!el) return;
+    const map = {
+      ok:      { text: 'Synced',      color: 'var(--green)' },
+      saving:  { text: 'Saving…',     color: 'var(--gold)' },
+      error:   { text: 'Offline — saved locally', color: 'var(--rust)' },
+    };
+    const s = map[state] || map.ok;
+    el.textContent = s.text;
+    el.style.color = s.color;
+  }
+
+  // ---------- storage helpers (Supabase, with localStorage fallback) ----------
+  async function storeGet(key){
+    try{
+      const res = await fetch(`${REST_URL}?key=eq.${encodeURIComponent(key)}&select=value`, {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        }
+      });
+      if (!res.ok) throw new Error('fetch failed');
+      const rows = await res.json();
+      setSyncStatus('ok');
+      if (rows && rows.length){
+        localStorage.setItem(key, JSON.stringify(rows[0].value));
+        return rows[0].value;
+      }
+      return null;
+    }catch(e){
+      setSyncStatus('error');
+      try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e2){ return null; }
+    }
+  }
+  async function storeSet(key, value){
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+    try{
+      setSyncStatus('saving');
+      const res = await fetch(REST_URL, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify([{ key, value, updated_at: new Date().toISOString() }])
+      });
+      if (!res.ok) throw new Error('save failed');
+      setSyncStatus('ok');
+    }catch(e){
+      setSyncStatus('error');
+    }
+  }
+
+  function todayKey(){
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+  }
+
+  // ---------- sourcing log ----------
+  let checkedState = {};
+  let sessionsLogged = 0;
+
+  async function loadLogState(){
+    const saved = await storeGet('sourcing-log-' + todayKey());
+    checkedState = saved || {};
+    const sessions = await storeGet('sourcing-sessions-count');
+    sessionsLogged = sessions || 0;
+    renderLog();
+  }
+
+  function renderLog(){
+    const app = document.getElementById('app');
+    let html = '';
+    categories.forEach(cat => {
+      const catItems = items.filter(i => i.cat === cat.id);
+      const checkedCount = catItems.filter(i => checkedState[i.id]).length;
+      html += `<div class="lane">
+        <div class="lane-head">
+          <span class="lane-num">${cat.number}</span>
+          <span class="lane-title">${cat.title}</span>
+          <span class="lane-progress">${checkedCount}/${catItems.length}</span>
+          <div class="lane-sub">${cat.sub}</div>
+        </div>
+        <div class="lane-body">`;
+      catItems.forEach(item => {
+        const checked = !!checkedState[item.id];
+        html += `<div class="item ${checked?'checked':''}" data-id="${item.id}">
+          <input type="checkbox" id="cb-${item.id}" ${checked?'checked':''} />
+          <label for="cb-${item.id}">${item.html}</label>
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+
+    const totalChecked = items.filter(i => checkedState[i.id]).length;
+    html += `<div class="footer-bar">
+      <div class="session-count">Today: <b>${totalChecked}/${items.length}</b> &nbsp;|&nbsp; Sessions logged: <b>${sessionsLogged}</b></div>
+      <button class="reset-btn" id="resetBtn" type="button">Reset today</button>
+    </div>`;
+
+    app.innerHTML = html;
+
+    app.querySelectorAll('.item').forEach(el => {
+      el.addEventListener('click', async (e) => {
+        if (e.target.tagName === 'A') return;
+        const id = el.getAttribute('data-id');
+        const wasAllDone = items.every(i => checkedState[i.id]);
+        checkedState[id] = !checkedState[id];
+        await storeSet('sourcing-log-' + todayKey(), checkedState);
+        const nowAllDone = items.every(i => checkedState[i.id]);
+        if (!wasAllDone && nowAllDone){
+          sessionsLogged += 1;
+          await storeSet('sourcing-sessions-count', sessionsLogged);
+          showStamp();
+        }
+        renderLog();
+      });
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', async () => {
+      checkedState = {};
+      await storeSet('sourcing-log-' + todayKey(), checkedState);
+      renderLog();
+    });
+  }
+
+  function showStamp(){
+    const overlay = document.getElementById('overlay');
+    document.getElementById('stampDate').textContent = new Date().toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+    overlay.classList.add('show');
+    setTimeout(() => overlay.classList.remove('show'), 1400);
+  }
+
+  // ---------- deal tracker ----------
+  let deals = [];
+  let editingId = null;
+
+  async function loadDeals(){
+    const saved = await storeGet('deal-tracker');
+    deals = saved || sampleDeals.slice();
+    renderDeals();
+  }
+
+  function statusLabel(s){
+    return { pin:'Pin', pass:'Pass', research:'Research', auction:'Auction' }[s] || s;
+  }
+  function fmtMoney(v){
+    if (!v) return '—';
+    const n = Number(v);
+    if (isNaN(n)) return v;
+    return '$' + n.toLocaleString();
+  }
+
+  function renderDeals(){
+    const app = document.getElementById('dealApp');
+    const pinCount = deals.filter(d => d.status === 'pin').length;
+    let html = `<div class="deal-toolbar">
+      <div class="deal-summary"><strong>${deals.length}</strong> tracked &nbsp;·&nbsp; <strong>${pinCount}</strong> pinned</div>
+      <button class="add-btn" id="addDealBtn" type="button">+ Add Property</button>
+    </div>`;
+
+    if (deals.length === 0){
+      html += `<div class="empty">No properties tracked yet. Add one to get started.</div>`;
+    } else {
+      deals.forEach(d => {
+        html += `<div class="deal-card" data-id="${d.id}">
+          <div class="deal-card-top">
+            <div class="deal-addr">${d.address}${d.city ? '<br><span style="font-family:IBM Plex Sans; font-size:11px; color:var(--ink-soft);">'+d.city+'</span>' : ''}</div>
+            <span class="badge badge-${d.status}">${statusLabel(d.status)}</span>
+          </div>
+          <div class="deal-grid">
+            <div><span>Asking</span>${fmtMoney(d.asking)}</div>
+            <div><span>ARV</span>${fmtMoney(d.arv)}</div>
+            <div><span>Max Offer</span>${fmtMoney(d.maxOffer)}</div>
+          </div>
+          ${d.next ? `<div class="deal-next"><b>Next:</b> ${d.next}</div>` : ''}
+          <div class="deal-actions">
+            <button class="link-btn edit-deal" type="button">Edit</button>
+            <button class="link-btn danger delete-deal" type="button">Delete</button>
+          </div>
+        </div>`;
+      });
+    }
+    app.innerHTML = html;
+
+    document.getElementById('addDealBtn').addEventListener('click', () => openDealModal(null));
+    app.querySelectorAll('.edit-deal').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.deal-card').getAttribute('data-id');
+        openDealModal(id);
+      });
+    });
+    app.querySelectorAll('.delete-deal').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.closest('.deal-card').getAttribute('data-id');
+        deals = deals.filter(d => d.id !== id);
+        await storeSet('deal-tracker', deals);
+        renderDeals();
+      });
+    });
+  }
+
+  function openDealModal(id){
+    editingId = id;
+    const d = id ? deals.find(x => x.id === id) : { address:'', city:'', status:'research', asking:'', arv:'', maxOffer:'', next:'' };
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.id = 'modalBackdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${id ? 'Edit Property' : 'Add Property'}</h3>
+        <div class="field"><label>Address</label><input id="f-address" value="${d.address}" /></div>
+        <div class="field"><label>City / Notes</label><input id="f-city" value="${d.city||''}" /></div>
+        <div class="field">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="pin" ${d.status==='pin'?'selected':''}>Pin</option>
+            <option value="research" ${d.status==='research'?'selected':''}>Research</option>
+            <option value="pass" ${d.status==='pass'?'selected':''}>Pass</option>
+            <option value="auction" ${d.status==='auction'?'selected':''}>Auction</option>
+          </select>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Asking Price</label><input id="f-asking" type="number" value="${d.asking||''}" /></div>
+          <div class="field"><label>ARV</label><input id="f-arv" type="number" value="${d.arv||''}" /></div>
+        </div>
+        <div class="field"><label>Max Offer (70% rule)</label><input id="f-maxoffer" type="number" value="${d.maxOffer||''}" /></div>
+        <div class="field"><label>Next Action</label><textarea id="f-next">${d.next||''}</textarea></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="cancelModal" type="button">Cancel</button>
+          <button class="btn-primary" id="saveModal" type="button">${id ? 'Save Changes' : 'Add Property'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    document.getElementById('cancelModal').addEventListener('click', closeDealModal);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeDealModal(); });
+    document.getElementById('saveModal').addEventListener('click', async () => {
+      const address = document.getElementById('f-address').value.trim();
+      if (!address){ document.getElementById('f-address').focus(); return; }
+      const payload = {
+        id: id || ('d' + Date.now()),
+        address,
+        city: document.getElementById('f-city').value.trim(),
+        status: document.getElementById('f-status').value,
+        asking: document.getElementById('f-asking').value,
+        arv: document.getElementById('f-arv').value,
+        maxOffer: document.getElementById('f-maxoffer').value,
+        next: document.getElementById('f-next').value.trim(),
+      };
+      if (id){
+        deals = deals.map(x => x.id === id ? payload : x);
+      } else {
+        deals.push(payload);
+      }
+      await storeSet('deal-tracker', deals);
+      closeDealModal();
+      renderDeals();
+    });
+  }
+
+  function closeDealModal(){
+    const el = document.getElementById('modalBackdrop');
+    if (el) el.remove();
+    editingId = null;
+  }
+
+  // ---------- tabs ----------
+  const tabLogBtn = document.getElementById('tabLogBtn');
+  const tabDealsBtn = document.getElementById('tabDealsBtn');
+  const appEl = document.getElementById('app');
+  const dealAppEl = document.getElementById('dealApp');
+
+  tabLogBtn.addEventListener('click', () => {
+    tabLogBtn.classList.add('active'); tabLogBtn.setAttribute('aria-selected','true');
+    tabDealsBtn.classList.remove('active'); tabDealsBtn.setAttribute('aria-selected','false');
+    appEl.style.display = ''; dealAppEl.style.display = 'none';
+  });
+  tabDealsBtn.addEventListener('click', () => {
+    tabDealsBtn.classList.add('active'); tabDealsBtn.setAttribute('aria-selected','true');
+    tabLogBtn.classList.remove('active'); tabLogBtn.setAttribute('aria-selected','false');
+    dealAppEl.style.display = ''; appEl.style.display = 'none';
+  });
+
+  loadLogState();
+  loadDeals();
+})();
+</script>
+</body>
+</html>

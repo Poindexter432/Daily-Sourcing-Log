@@ -216,13 +216,32 @@
     border-radius: 2px;
     padding: 12px 14px;
     margin-bottom: 10px;
+    position: relative;
   }
   .deal-card-top{
     display:flex;
     justify-content:space-between;
     align-items:flex-start;
     gap: 8px;
+    padding-right: 22px;
   }
+  .deal-x{
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: none;
+    color: var(--ink-soft);
+    font-family:'Courier Prime', monospace;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 50%;
+  }
+  .deal-x:hover{ color: var(--paper); background: var(--rust); }
+  .deal-x:focus-visible{ outline: 2px solid var(--navy); outline-offset: 1px; }
   .deal-addr{ font-family:'Special Elite', monospace; font-size: 14px; color: var(--ink); }
   .badge{
     font-family:'Courier Prime', monospace;
@@ -568,6 +587,7 @@
     } else {
       deals.forEach(d => {
         html += `<div class="deal-card" data-id="${d.id}">
+          <button class="deal-x" type="button" data-id="${d.id}" title="Remove property" aria-label="Remove ${d.address}">✕</button>
           <div class="deal-card-top">
             <div class="deal-addr">${d.address}${d.city ? '<br><span style="font-family:IBM Plex Sans; font-size:11px; color:var(--ink-soft);">'+d.city+'</span>' : ''}</div>
             <span class="badge badge-${d.status}">${statusLabel(d.status)}</span>
@@ -597,6 +617,17 @@
     app.querySelectorAll('.delete-deal').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = e.target.closest('.deal-card').getAttribute('data-id');
+        deals = deals.filter(d => d.id !== id);
+        await storeSet('deal-tracker', deals);
+        renderDeals();
+      });
+    });
+    app.querySelectorAll('.deal-x').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const deal = deals.find(d => d.id === id);
+        if (deal && !confirm(`Remove ${deal.address} from the tracker?`)) return;
         deals = deals.filter(d => d.id !== id);
         await storeSet('deal-tracker', deals);
         renderDeals();

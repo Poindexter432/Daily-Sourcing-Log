@@ -318,6 +318,15 @@
     color: var(--ink);
   }
   .field textarea{ resize: vertical; min-height: 50px; }
+  .paste-box{
+    background: rgba(31,58,95,0.06);
+    border: 1px dashed var(--navy);
+    border-radius: 4px;
+    padding: 10px 10px 12px;
+    margin-bottom: 16px;
+  }
+  .paste-box label{ color: var(--navy); }
+  .paste-box textarea{ min-height: 70px; font-family:'Courier Prime', monospace; font-size: 12.5px; }
   .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .modal-actions{ display:flex; justify-content:flex-end; gap: 10px; margin-top: 16px; }
   .btn-secondary{
@@ -573,6 +582,61 @@
     if (isNaN(n)) return v;
     return '$' + n.toLocaleString();
   }
+  function fmtNum(v){
+    if (!v) return '—';
+    const n = Number(v);
+    if (isNaN(n)) return v;
+    return n.toLocaleString();
+  }
+
+  function parseListing(text){
+    const out = { address:'', city:'', asking:'', sqft:'', beds:'', baths:'', pricePerSqft:'' };
+    if (!text) return out;
+
+    // price + price/sqft — find all $ amounts, separate any that are followed by "/sqft" or "/sq ft"
+    const priceMatches = [...text.matchAll(/\$\s?[\d,]+(?:\.\d+)?/g)];
+    for (const m of priceMatches){
+      const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 12);
+      const clean = m[0].replace(/[$,\s]/g,'');
+      if (/^\s*\/\s*(sq\.?\s*ft|sqft)/i.test(tail)){
+        if (!out.pricePerSqft) out.pricePerSqft = clean;
+      } else if (!out.asking){
+        out.asking = clean;
+      }
+    }
+
+    // sqft
+    const sqftMatch = text.match(/([\d,]{3,7})\s*(?:sq\.?\s*ft|sqft|square feet)/i);
+    if (sqftMatch) out.sqft = sqftMatch[1].replace(/,/g,'');
+
+    // beds
+    const bedMatch = text.match(/(\d+(?:\.\d)?)\s*(?:bds?\.?|beds?\.?|bedrooms?)/i);
+    if (bedMatch) out.beds = bedMatch[1];
+
+    // baths
+    const bathMatch = text.match(/(\d+(?:\.\d)?)\s*(?:bas?\.?|baths?\.?|bathrooms?)/i);
+    if (bathMatch) out.baths = bathMatch[1];
+
+    // address — street number + street name, city, ST ZIP
+    const addrMatch = text.match(/\d{1,6}\s+[A-Za-z0-9.#'\- ]+,\s*[A-Za-z .'\-]+,\s*[A-Z]{2}\s*\d{5}/);
+    if (addrMatch){
+      const parts = addrMatch[0].split(',');
+      out.address = parts[0].trim();
+      out.city = parts.slice(1).join(',').trim();
+    } else {
+      // fallback: first line that starts with a number (street address without city/state)
+      const line = text.split('\n').map(l => l.trim()).find(l => /^\d{1,6}\s+\S/.test(l) && !/\$/.test(l));
+      if (line) out.address = line;
+    }
+
+    // derive price/sqft if not explicitly found but we have both price and sqft
+    if (!out.pricePerSqft && out.asking && out.sqft){
+      const ppsf = Number(out.asking) / Number(out.sqft);
+      if (isFinite(ppsf)) out.pricePerSqft = ppsf.toFixed(0);
+    }
+
+    return out;
+  }
 
   function renderDeals(){
     const app = document.getElementById('dealApp');
@@ -596,6 +660,9 @@
             <div><span>Asking</span>${fmtMoney(d.asking)}</div>
             <div><span>ARV</span>${fmtMoney(d.arv)}</div>
             <div><span>Max Offer</span>${fmtMoney(d.maxOffer)}</div>
+            <div><span>Sqft</span>${fmtNum(d.sqft)}</div>
+            <div><span>Bed / Bath</span>${d.beds||d.baths ? `${d.beds||'—'} bd / ${d.baths||'—'} ba` : '—'}</div>
+            <div><span>$ / Sqft</span>${d.pricePerSqft ? '$'+Number(d.pricePerSqft).toLocaleString() : '—'}</div>
           </div>
           ${d.next ? `<div class="deal-next"><b>Next:</b> ${d.next}</div>` : ''}
           <div class="deal-actions">
@@ -637,13 +704,20 @@
 
   function openDealModal(id){
     editingId = id;
-    const d = id ? deals.find(x => x.id === id) : { address:'', city:'', status:'research', asking:'', arv:'', maxOffer:'', next:'' };
+    const d = id ? deals.find(x => x.id === id) : { address:'', city:'', status:'research', asking:'', arv:'', maxOffer:'', sqft:'', pricePerSqft:'', beds:'', baths:'', next:'' };
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.id = 'modalBackdrop';
     backdrop.innerHTML = `
       <div class="modal">
         <h3>${id ? 'Edit Property' : 'Add Property'}</h3>
+
+        <div class="field paste-box">
+          <label>Paste Listing Info (optional)</label>
+          <textarea id="f-paste" placeholder="Copy the listing details from Zillow/Redfin/etc and paste here — e.g.&#10;1002 W Silver Springs Pl, Ocala, FL 34475&#10;$100,000 · 3 bds · 2 ba · 1,450 sqft"></textarea>
+          <button class="btn-secondary" id="parseBtn" type="button" style="margin-top:6px; width:100%;">Parse &amp; Fill Fields Below</button>
+        </div>
+
         <div class="field"><label>Address</label><input id="f-address" value="${d.address}" /></div>
         <div class="field"><label>City / Notes</label><input id="f-city" value="${d.city||''}" /></div>
         <div class="field">
@@ -660,6 +734,14 @@
           <div class="field"><label>ARV</label><input id="f-arv" type="number" value="${d.arv||''}" /></div>
         </div>
         <div class="field"><label>Max Offer (70% rule)</label><input id="f-maxoffer" type="number" value="${d.maxOffer||''}" /></div>
+        <div class="row2">
+          <div class="field"><label>Sqft</label><input id="f-sqft" type="number" value="${d.sqft||''}" /></div>
+          <div class="field"><label>$ / Sqft</label><input id="f-ppsf" type="number" value="${d.pricePerSqft||''}" /></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Beds</label><input id="f-beds" type="number" step="0.5" value="${d.beds||''}" /></div>
+          <div class="field"><label>Baths</label><input id="f-baths" type="number" step="0.5" value="${d.baths||''}" /></div>
+        </div>
         <div class="field"><label>Next Action</label><textarea id="f-next">${d.next||''}</textarea></div>
         <div class="modal-actions">
           <button class="btn-secondary" id="cancelModal" type="button">Cancel</button>
@@ -667,6 +749,22 @@
         </div>
       </div>`;
     document.body.appendChild(backdrop);
+
+    document.getElementById('parseBtn').addEventListener('click', () => {
+      const raw = document.getElementById('f-paste').value;
+      const parsed = parseListing(raw);
+      if (parsed.address) document.getElementById('f-address').value = parsed.address;
+      if (parsed.city) document.getElementById('f-city').value = parsed.city;
+      if (parsed.asking) document.getElementById('f-asking').value = parsed.asking;
+      if (parsed.sqft) document.getElementById('f-sqft').value = parsed.sqft;
+      if (parsed.beds) document.getElementById('f-beds').value = parsed.beds;
+      if (parsed.baths) document.getElementById('f-baths').value = parsed.baths;
+      if (parsed.pricePerSqft) document.getElementById('f-ppsf').value = parsed.pricePerSqft;
+      const gotAnything = parsed.address || parsed.asking || parsed.sqft || parsed.beds || parsed.baths;
+      const btn = document.getElementById('parseBtn');
+      btn.textContent = gotAnything ? '✓ Filled — check the fields below' : 'Couldn\'t find those details — fill in manually';
+      setTimeout(() => { btn.textContent = 'Parse & Fill Fields Below'; }, 2500);
+    });
 
     document.getElementById('cancelModal').addEventListener('click', closeDealModal);
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeDealModal(); });
@@ -681,6 +779,10 @@
         asking: document.getElementById('f-asking').value,
         arv: document.getElementById('f-arv').value,
         maxOffer: document.getElementById('f-maxoffer').value,
+        sqft: document.getElementById('f-sqft').value,
+        pricePerSqft: document.getElementById('f-ppsf').value,
+        beds: document.getElementById('f-beds').value,
+        baths: document.getElementById('f-baths').value,
         next: document.getElementById('f-next').value.trim(),
       };
       if (id){

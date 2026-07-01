@@ -262,6 +262,41 @@
   .badge-ruledout{ background: rgba(161,70,46,0.15); color: var(--rust); }
   .badge-contacted{ background: rgba(31,58,95,0.15); color: var(--navy); }
 
+  .badge-active{ background: rgba(62,92,58,0.15); color: var(--green); }
+  .badge-secondary{ background: rgba(184,134,11,0.15); color: var(--gold); }
+  .badge-cold{ background: rgba(107,99,86,0.15); color: var(--ink-soft); }
+
+  .followup-pill{
+    display:inline-flex; align-items:center; gap:4px;
+    font-family:'Courier Prime', monospace; font-size: 10.5px;
+    padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+  }
+  .followup-overdue{ background: rgba(161,70,46,0.18); color: var(--rust); }
+  .followup-soon{ background: rgba(184,134,11,0.18); color: var(--gold); }
+  .followup-ok{ background: rgba(62,92,58,0.12); color: var(--green); }
+  .followup-none{ background: rgba(107,99,86,0.1); color: var(--ink-soft); }
+
+  .score-dots{ display:inline-flex; gap: 3px; vertical-align: middle; }
+  .score-dot{ width:8px; height:8px; border-radius:50%; background: var(--line); display:inline-block; }
+  .score-dot.filled{ background: var(--green); }
+
+  .contact-links{ display:flex; gap: 14px; margin: 4px 0 8px; }
+  .contact-links a{ font-size: 12px; color: var(--navy); text-decoration: none; font-family:'Courier Prime', monospace; }
+  .contact-links a:hover{ text-decoration: underline; }
+
+  .filter-bar{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .filter-chip{
+    font-family:'Courier Prime', monospace; font-size: 11.5px;
+    background: none; border: 1px solid var(--line); color: var(--ink-soft);
+    padding: 5px 12px; border-radius: 14px; cursor:pointer;
+  }
+  .filter-chip.active{ background: var(--navy); color: var(--paper); border-color: var(--navy); }
+
+  .buybox-line{ font-size: 12px; color: var(--ink-soft); margin: 4px 0; line-height:1.5; }
+  .log-entries{ margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .log-entry{ font-size: 11.5px; color: var(--ink-soft); margin-bottom: 3px; }
+  .log-entry b{ color: var(--ink); font-family:'Courier Prime', monospace; font-weight:normal; }
+
   .juris-tag{
     display:inline-block;
     font-family:'Courier Prime', monospace;
@@ -405,11 +440,13 @@
     <button class="tab active" id="tabLogBtn" role="tab" aria-selected="true" type="button">Sourcing Log</button>
     <button class="tab" id="tabDealsBtn" role="tab" aria-selected="false" type="button">Deal Tracker</button>
     <button class="tab" id="tabDocketBtn" role="tab" aria-selected="false" type="button">Unprobated Docket</button>
+    <button class="tab" id="tabBuyersBtn" role="tab" aria-selected="false" type="button">Buyer Contacts</button>
   </div>
 
   <div id="app"><div class="loading">Loading your log…</div></div>
   <div id="dealApp" style="display:none;"><div class="loading">Loading your deals…</div></div>
   <div id="docketApp" style="display:none;"><div class="loading">Loading your docket…</div></div>
+  <div id="buyersApp" style="display:none;"><div class="loading">Loading your buyer list…</div></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -1093,32 +1130,323 @@
     if (el) el.remove();
   }
 
+  // ---------- buyer contacts ----------
+  const VETTING_CHECKS = [
+    { key:'pof', label:'Proof of funds received & verifiable' },
+    { key:'closingSpeed', label:'Specific, confident closing timeline' },
+    { key:'assignmentClear', label:'Clear yes/no on assignment vs. double-close' },
+    { key:'noDefensive', label:'No defensiveness on the re-trade question' },
+    { key:'references', label:'Provided references without hesitation' },
+    { key:'responsive', label:'Responsive — same-day reply' },
+  ];
+
+  let buyers = [];
+  let buyerFilter = 'all';
+
+  async function loadBuyers(){
+    const saved = await storeGet('buyer-contacts');
+    buyers = saved || [];
+    renderBuyers();
+  }
+
+  function scoreOf(b){
+    if (!b.checks) return 0;
+    return VETTING_CHECKS.filter(c => b.checks[c.key]).length;
+  }
+
+  function followupState(b){
+    if (!b.nextFollowUp) return { cls:'followup-none', text:'No follow-up set' };
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(b.nextFollowUp + 'T00:00:00');
+    const diffDays = Math.round((due - today) / 86400000);
+    if (diffDays < 0) return { cls:'followup-overdue', text:`Overdue ${Math.abs(diffDays)}d` };
+    if (diffDays <= 3) return { cls:'followup-soon', text: diffDays===0 ? 'Due today' : `Due in ${diffDays}d` };
+    return { cls:'followup-ok', text:`Follow up ${b.nextFollowUp}` };
+  }
+
+  function renderScoreDots(score){
+    let dots = '';
+    for (let i=0;i<6;i++) dots += `<span class="score-dot ${i<score?'filled':''}"></span>`;
+    return `<span class="score-dots">${dots}</span> <span style="font-family:'Courier Prime',monospace; font-size:11px; color:var(--ink-soft);">${score}/6</span>`;
+  }
+
+  function renderBuyers(){
+    const app = document.getElementById('buyersApp');
+    let filtered = buyers;
+    if (buyerFilter === 'active') filtered = buyers.filter(b => b.status === 'active');
+    if (buyerFilter === 'followup') filtered = buyers.filter(b => {
+      const f = followupState(b);
+      return f.cls === 'followup-overdue' || f.cls === 'followup-soon';
+    });
+
+    // sort: overdue first, then due soon, then rest, active status bubbles up within ties
+    const urgency = { 'followup-overdue':0, 'followup-soon':1, 'followup-ok':2, 'followup-none':3 };
+    filtered = filtered.slice().sort((a,b) => urgency[followupState(a).cls] - urgency[followupState(b).cls]);
+
+    let html = `<div class="deal-toolbar">
+      <div class="deal-summary"><strong>${buyers.length}</strong> buyers &nbsp;·&nbsp; <strong>${buyers.filter(b=>b.status==='active').length}</strong> active</div>
+      <button class="add-btn" id="addBuyerBtn" type="button">+ Add Buyer</button>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-chip ${buyerFilter==='all'?'active':''}" data-f="all" type="button">All</button>
+      <button class="filter-chip ${buyerFilter==='active'?'active':''}" data-f="active" type="button">Active</button>
+      <button class="filter-chip ${buyerFilter==='followup'?'active':''}" data-f="followup" type="button">Needs Follow-Up</button>
+    </div>`;
+
+    if (filtered.length === 0){
+      html += `<div class="empty">${buyers.length===0 ? 'No buyers yet. Add one from your vetting calls to start tracking them.' : 'Nothing matches this filter.'}</div>`;
+    } else {
+      filtered.forEach(b => {
+        const f = followupState(b);
+        const score = scoreOf(b);
+        const boxParts = [];
+        if (b.priceMin || b.priceMax) boxParts.push(`$${b.priceMin||'?'}–$${b.priceMax||'?'}`);
+        if (b.propertyTypes) boxParts.push(b.propertyTypes);
+        if (b.areas) boxParts.push(b.areas);
+        html += `<div class="deal-card" data-id="${b.id}">
+          <button class="deal-x" type="button" data-id="${b.id}" title="Remove buyer" aria-label="Remove ${b.name}">✕</button>
+          <div class="deal-card-top">
+            <div class="deal-addr">${b.name || '(unnamed)'}${b.company ? '<br><span style="font-family:IBM Plex Sans; font-size:11px; color:var(--ink-soft);">'+b.company+'</span>' : ''}</div>
+            <span class="badge badge-${b.status}">${b.status}</span>
+          </div>
+          <div><span class="followup-pill ${f.cls}">${f.text}</span></div>
+          ${boxParts.length ? `<div class="buybox-line">${boxParts.join(' · ')}</div>` : ''}
+          <div style="margin:6px 0;">${renderScoreDots(score)}</div>
+          <div class="contact-links">
+            ${b.phone ? `<a href="tel:${b.phone.replace(/[^\d+]/g,'')}">📞 ${b.phone}</a>` : ''}
+            ${b.email ? `<a href="mailto:${b.email}">✉ ${b.email}</a>` : ''}
+          </div>
+          ${b.notes ? `<div class="deal-next"><b>Notes:</b> ${b.notes}</div>` : ''}
+          ${b.log && b.log.length ? `<div class="log-entries">${b.log.slice(-3).reverse().map(l => `<div class="log-entry"><b>${l.date}</b> — ${l.note}</div>`).join('')}</div>` : ''}
+          <div class="deal-actions">
+            <button class="link-btn log-contact" type="button" data-id="${b.id}">Log Contact</button>
+            <button class="link-btn edit-buyer" type="button">Edit</button>
+            <button class="link-btn danger delete-buyer" type="button">Delete</button>
+          </div>
+        </div>`;
+      });
+    }
+    app.innerHTML = html;
+
+    app.querySelectorAll('.filter-chip').forEach(btn => {
+      btn.addEventListener('click', () => { buyerFilter = btn.getAttribute('data-f'); renderBuyers(); });
+    });
+    document.getElementById('addBuyerBtn').addEventListener('click', () => openBuyerModal(null));
+    app.querySelectorAll('.edit-buyer').forEach(btn => {
+      btn.addEventListener('click', (e) => openBuyerModal(e.target.closest('.deal-card').getAttribute('data-id')));
+    });
+    app.querySelectorAll('.delete-buyer').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.closest('.deal-card').getAttribute('data-id');
+        buyers = buyers.filter(b => b.id !== id);
+        await storeSet('buyer-contacts', buyers);
+        renderBuyers();
+      });
+    });
+    app.querySelectorAll('.deal-x').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const b = buyers.find(x => x.id === id);
+        if (b && !confirm(`Remove ${b.name || 'this buyer'} from your list?`)) return;
+        buyers = buyers.filter(x => x.id !== id);
+        await storeSet('buyer-contacts', buyers);
+        renderBuyers();
+      });
+    });
+    app.querySelectorAll('.log-contact').forEach(btn => {
+      btn.addEventListener('click', () => openLogModal(btn.getAttribute('data-id')));
+    });
+  }
+
+  function openLogModal(id){
+    const b = buyers.find(x => x.id === id);
+    if (!b) return;
+    const today = new Date().toISOString().slice(0,10);
+    const weekOut = new Date(Date.now() + 7*86400000).toISOString().slice(0,10);
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.id = 'logModalBackdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>Log Contact — ${b.name}</h3>
+        <div class="field"><label>What happened? (optional)</label><textarea id="log-note" placeholder="e.g. Called, left voicemail. Or: confirmed still buying in Ashland."></textarea></div>
+        <div class="field"><label>Next Follow-Up Date</label><input id="log-nextdate" type="date" value="${weekOut}" /></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="cancelLogModal" type="button">Cancel</button>
+          <button class="btn-primary" id="saveLogModal" type="button">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+    document.getElementById('cancelLogModal').addEventListener('click', () => backdrop.remove());
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+    document.getElementById('saveLogModal').addEventListener('click', async () => {
+      const note = document.getElementById('log-note').value.trim() || 'Contacted';
+      const nextDate = document.getElementById('log-nextdate').value;
+      b.log = b.log || [];
+      b.log.push({ date: today, note });
+      b.lastContact = today;
+      if (nextDate) b.nextFollowUp = nextDate;
+      await storeSet('buyer-contacts', buyers);
+      backdrop.remove();
+      renderBuyers();
+    });
+  }
+
+  function openBuyerModal(id){
+    const b = id ? buyers.find(x => x.id === id) : {
+      name:'', company:'', phone:'', email:'', priceMin:'', priceMax:'',
+      propertyTypes:'', areas:'', condition:'', pofStatus:'pending', assignmentPref:'unknown',
+      closingDays:'', status:'secondary', nextFollowUp:'', notes:'', checks:{}, log:[]
+    };
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.id = 'buyerModalBackdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${id ? 'Edit Buyer' : 'Add Buyer'}</h3>
+        <div class="field"><label>Name</label><input id="b-name" value="${b.name}" /></div>
+        <div class="field"><label>Company</label><input id="b-company" value="${b.company||''}" /></div>
+        <div class="row2">
+          <div class="field"><label>Phone</label><input id="b-phone" type="tel" value="${b.phone||''}" /></div>
+          <div class="field"><label>Email</label><input id="b-email" type="email" value="${b.email||''}" /></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Price Min</label><input id="b-pricemin" type="number" value="${b.priceMin||''}" /></div>
+          <div class="field"><label>Price Max</label><input id="b-pricemax" type="number" value="${b.priceMax||''}" /></div>
+        </div>
+        <div class="field"><label>Property Types</label><input id="b-proptypes" placeholder="SFR, manufactured, land…" value="${b.propertyTypes||''}" /></div>
+        <div class="field"><label>Areas / Zips</label><input id="b-areas" value="${b.areas||''}" /></div>
+        <div class="field"><label>Condition Tolerance</label><input id="b-condition" placeholder="Full gut okay, or turnkey only" value="${b.condition||''}" /></div>
+        <div class="row2">
+          <div class="field">
+            <label>Proof of Funds</label>
+            <select id="b-pof">
+              <option value="received" ${b.pofStatus==='received'?'selected':''}>Received</option>
+              <option value="pending" ${b.pofStatus==='pending'?'selected':''}>Pending</option>
+              <option value="none" ${b.pofStatus==='none'?'selected':''}>None</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Assignment Preference</label>
+            <select id="b-assign">
+              <option value="assignment" ${b.assignmentPref==='assignment'?'selected':''}>Assignment OK</option>
+              <option value="doubleclose" ${b.assignmentPref==='doubleclose'?'selected':''}>Double-Close Only</option>
+              <option value="unknown" ${b.assignmentPref==='unknown'?'selected':''}>Unknown</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Typical Closing Speed (days)</label><input id="b-closingdays" type="number" value="${b.closingDays||''}" /></div>
+
+        <div class="field" style="margin-top:16px;">
+          <label>Vetting Checklist (from your call script)</label>
+          <div class="step-list" id="b-checks">
+            ${VETTING_CHECKS.map(c => `
+              <div class="step-row">
+                <input type="checkbox" id="chk-${c.key}" data-key="${c.key}" ${b.checks && b.checks[c.key] ? 'checked' : ''} />
+                <div class="step-text"><label for="chk-${c.key}">${c.label}</label></div>
+              </div>`).join('')}
+          </div>
+          <div id="scoreHint" style="font-size:11px; color:var(--ink-soft); margin-top:4px;"></div>
+        </div>
+
+        <div class="field">
+          <label>Status</label>
+          <select id="b-status">
+            <option value="active" ${b.status==='active'?'selected':''}>Active</option>
+            <option value="secondary" ${b.status==='secondary'?'selected':''}>Secondary</option>
+            <option value="cold" ${b.status==='cold'?'selected':''}>Cold</option>
+          </select>
+        </div>
+        <div class="field"><label>Next Follow-Up Date</label><input id="b-nextfollowup" type="date" value="${b.nextFollowUp||''}" /></div>
+        <div class="field"><label>Notes</label><textarea id="b-notes">${b.notes||''}</textarea></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="cancelBuyerModal" type="button">Cancel</button>
+          <button class="btn-primary" id="saveBuyerModal" type="button">${id ? 'Save Changes' : 'Add Buyer'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    function updateScoreHint(){
+      const checked = VETTING_CHECKS.filter(c => document.getElementById('chk-'+c.key).checked).length;
+      const hint = document.getElementById('scoreHint');
+      hint.textContent = `Score: ${checked}/6 — ` + (checked >= 5 ? 'suggests Active list' : checked <= 2 ? 'suggests Secondary/Cold list' : 'borderline, your call');
+    }
+    VETTING_CHECKS.forEach(c => document.getElementById('chk-'+c.key).addEventListener('change', updateScoreHint));
+    updateScoreHint();
+
+    document.getElementById('cancelBuyerModal').addEventListener('click', () => backdrop.remove());
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+    document.getElementById('saveBuyerModal').addEventListener('click', async () => {
+      const name = document.getElementById('b-name').value.trim();
+      if (!name){ document.getElementById('b-name').focus(); return; }
+      const checks = {};
+      VETTING_CHECKS.forEach(c => { checks[c.key] = document.getElementById('chk-'+c.key).checked; });
+      const payload = {
+        id: id || ('b' + Date.now()),
+        name,
+        company: document.getElementById('b-company').value.trim(),
+        phone: document.getElementById('b-phone').value.trim(),
+        email: document.getElementById('b-email').value.trim(),
+        priceMin: document.getElementById('b-pricemin').value,
+        priceMax: document.getElementById('b-pricemax').value,
+        propertyTypes: document.getElementById('b-proptypes').value.trim(),
+        areas: document.getElementById('b-areas').value.trim(),
+        condition: document.getElementById('b-condition').value.trim(),
+        pofStatus: document.getElementById('b-pof').value,
+        assignmentPref: document.getElementById('b-assign').value,
+        closingDays: document.getElementById('b-closingdays').value,
+        checks,
+        status: document.getElementById('b-status').value,
+        nextFollowUp: document.getElementById('b-nextfollowup').value,
+        notes: document.getElementById('b-notes').value.trim(),
+        log: b.log || [],
+        lastContact: b.lastContact || '',
+      };
+      if (id){
+        buyers = buyers.map(x => x.id === id ? payload : x);
+      } else {
+        buyers.push(payload);
+      }
+      await storeSet('buyer-contacts', buyers);
+      backdrop.remove();
+      renderBuyers();
+    });
+  }
+
   const tabLogBtn = document.getElementById('tabLogBtn');
   const tabDealsBtn = document.getElementById('tabDealsBtn');
   const tabDocketBtn = document.getElementById('tabDocketBtn');
+  const tabBuyersBtn = document.getElementById('tabBuyersBtn');
   const appEl = document.getElementById('app');
   const dealAppEl = document.getElementById('dealApp');
   const docketAppEl = document.getElementById('docketApp');
+  const buyersAppEl = document.getElementById('buyersApp');
 
   function showTab(which){
     tabLogBtn.classList.toggle('active', which==='log');
     tabDealsBtn.classList.toggle('active', which==='deals');
     tabDocketBtn.classList.toggle('active', which==='docket');
+    tabBuyersBtn.classList.toggle('active', which==='buyers');
     tabLogBtn.setAttribute('aria-selected', which==='log');
     tabDealsBtn.setAttribute('aria-selected', which==='deals');
     tabDocketBtn.setAttribute('aria-selected', which==='docket');
+    tabBuyersBtn.setAttribute('aria-selected', which==='buyers');
     appEl.style.display = which==='log' ? '' : 'none';
     dealAppEl.style.display = which==='deals' ? '' : 'none';
     docketAppEl.style.display = which==='docket' ? '' : 'none';
+    buyersAppEl.style.display = which==='buyers' ? '' : 'none';
   }
 
   tabLogBtn.addEventListener('click', () => showTab('log'));
   tabDealsBtn.addEventListener('click', () => showTab('deals'));
   tabDocketBtn.addEventListener('click', () => showTab('docket'));
+  tabBuyersBtn.addEventListener('click', () => showTab('buyers'));
 
   loadLogState();
   loadDeals();
   loadDocket();
+  loadBuyers();
 })();
 </script>
 </body>

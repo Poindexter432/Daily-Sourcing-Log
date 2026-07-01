@@ -659,6 +659,7 @@
           <div class="deal-grid">
             <div><span>Asking</span>${fmtMoney(d.asking)}</div>
             <div><span>ARV</span>${fmtMoney(d.arv)}</div>
+            <div><span>Repairs</span>${fmtMoney(d.repairs)}</div>
             <div><span>Max Offer</span>${fmtMoney(d.maxOffer)}</div>
             <div><span>Sqft</span>${fmtNum(d.sqft)}</div>
             <div><span>Bed / Bath</span>${d.beds||d.baths ? `${d.beds||'—'} bd / ${d.baths||'—'} ba` : '—'}</div>
@@ -704,7 +705,7 @@
 
   function openDealModal(id){
     editingId = id;
-    const d = id ? deals.find(x => x.id === id) : { address:'', city:'', status:'research', asking:'', arv:'', maxOffer:'', sqft:'', pricePerSqft:'', beds:'', baths:'', next:'' };
+    const d = id ? deals.find(x => x.id === id) : { address:'', city:'', status:'research', asking:'', arv:'', repairs:'', maxOffer:'', sqft:'', pricePerSqft:'', beds:'', baths:'', next:'' };
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.id = 'modalBackdrop';
@@ -735,7 +736,12 @@
         </div>
         <button class="btn-secondary" id="lookupBtn" type="button" style="width:100%; margin-bottom:12px;">Look Up Value Estimate (RentCast)</button>
         <div id="lookupResult" style="font-size:11.5px; color:var(--ink-soft); margin:-6px 0 12px; line-height:1.5;"></div>
-        <div class="field"><label>Max Offer (70% rule)</label><input id="f-maxoffer" type="number" value="${d.maxOffer||''}" /></div>
+        <div class="field"><label>Estimated Repairs</label><input id="f-repairs" type="number" value="${d.repairs||''}" /></div>
+        <div class="field">
+          <label>Max Offer (ARV × 70% − Repairs)</label>
+          <input id="f-maxoffer" type="number" value="${d.maxOffer||''}" />
+          <div style="font-size:10.5px; color:var(--ink-soft); margin-top:3px;">Auto-calculated from ARV and repairs — edit directly anytime to override.</div>
+        </div>
         <div class="row2">
           <div class="field"><label>Sqft</label><input id="f-sqft" type="number" value="${d.sqft||''}" /></div>
           <div class="field"><label>$ / Sqft</label><input id="f-ppsf" type="number" value="${d.pricePerSqft||''}" /></div>
@@ -751,6 +757,18 @@
         </div>
       </div>`;
     document.body.appendChild(backdrop);
+
+    function recalcMaxOffer(){
+      const arv = parseFloat(document.getElementById('f-arv').value);
+      const repairs = parseFloat(document.getElementById('f-repairs').value) || 0;
+      const maxOfferField = document.getElementById('f-maxoffer');
+      if (!isNaN(arv) && arv > 0){
+        const calc = Math.round(arv * 0.7 - repairs);
+        maxOfferField.value = calc;
+      }
+    }
+    document.getElementById('f-arv').addEventListener('input', recalcMaxOffer);
+    document.getElementById('f-repairs').addEventListener('input', recalcMaxOffer);
 
     document.getElementById('parseBtn').addEventListener('click', () => {
       const raw = document.getElementById('f-paste').value;
@@ -799,6 +817,7 @@
           resultEl.textContent = 'No estimate found — ' + (data.error || 'check the address and try again.');
         } else if (data.price){
           document.getElementById('f-arv').value = Math.round(data.price);
+          recalcMaxOffer();
           const low = data.priceRangeLow ? fmtMoney(data.priceRangeLow) : '—';
           const high = data.priceRangeHigh ? fmtMoney(data.priceRangeHigh) : '—';
           const compCount = Array.isArray(data.comparables) ? data.comparables.length : 0;
@@ -828,6 +847,7 @@
         status: document.getElementById('f-status').value,
         asking: document.getElementById('f-asking').value,
         arv: document.getElementById('f-arv').value,
+        repairs: document.getElementById('f-repairs').value,
         maxOffer: document.getElementById('f-maxoffer').value,
         sqft: document.getElementById('f-sqft').value,
         pricePerSqft: document.getElementById('f-ppsf').value,

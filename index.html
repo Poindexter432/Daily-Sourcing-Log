@@ -733,6 +733,8 @@
           <div class="field"><label>Asking Price</label><input id="f-asking" type="number" value="${d.asking||''}" /></div>
           <div class="field"><label>ARV</label><input id="f-arv" type="number" value="${d.arv||''}" /></div>
         </div>
+        <button class="btn-secondary" id="lookupBtn" type="button" style="width:100%; margin-bottom:12px;">Look Up Value Estimate (RentCast)</button>
+        <div id="lookupResult" style="font-size:11.5px; color:var(--ink-soft); margin:-6px 0 12px; line-height:1.5;"></div>
         <div class="field"><label>Max Offer (70% rule)</label><input id="f-maxoffer" type="number" value="${d.maxOffer||''}" /></div>
         <div class="row2">
           <div class="field"><label>Sqft</label><input id="f-sqft" type="number" value="${d.sqft||''}" /></div>
@@ -764,6 +766,54 @@
       const btn = document.getElementById('parseBtn');
       btn.textContent = gotAnything ? '✓ Filled — check the fields below' : 'Couldn\'t find those details — fill in manually';
       setTimeout(() => { btn.textContent = 'Parse & Fill Fields Below'; }, 2500);
+    });
+
+    document.getElementById('lookupBtn').addEventListener('click', async () => {
+      const addr = document.getElementById('f-address').value.trim();
+      const city = document.getElementById('f-city').value.trim();
+      const resultEl = document.getElementById('lookupResult');
+      const btn = document.getElementById('lookupBtn');
+      if (!addr){
+        resultEl.style.color = 'var(--rust)';
+        resultEl.textContent = 'Enter an address first.';
+        return;
+      }
+      const fullAddress = city ? `${addr}, ${city}` : addr;
+      btn.textContent = 'Looking up…';
+      btn.disabled = true;
+      resultEl.style.color = 'var(--ink-soft)';
+      resultEl.textContent = '';
+      try{
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/rentcast-comps`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            apikey: SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ address: fullAddress }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error){
+          resultEl.style.color = 'var(--rust)';
+          resultEl.textContent = 'No estimate found — ' + (data.error || 'check the address and try again.');
+        } else if (data.price){
+          document.getElementById('f-arv').value = Math.round(data.price);
+          const low = data.priceRangeLow ? fmtMoney(data.priceRangeLow) : '—';
+          const high = data.priceRangeHigh ? fmtMoney(data.priceRangeHigh) : '—';
+          const compCount = Array.isArray(data.comparables) ? data.comparables.length : 0;
+          resultEl.style.color = 'var(--green)';
+          resultEl.textContent = `Estimate: ${fmtMoney(data.price)} (range ${low}–${high}) based on ${compCount} comps. ARV field filled — verify against your own comps before relying on it.`;
+        } else {
+          resultEl.style.color = 'var(--rust)';
+          resultEl.textContent = 'No estimate returned for that address — check spelling/formatting or fill ARV in manually.';
+        }
+      }catch(e){
+        resultEl.style.color = 'var(--rust)';
+        resultEl.textContent = 'Lookup failed — check your connection and try again.';
+      }
+      btn.textContent = 'Look Up Value Estimate (RentCast)';
+      btn.disabled = false;
     });
 
     document.getElementById('cancelModal').addEventListener('click', closeDealModal);

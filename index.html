@@ -257,6 +257,39 @@
   .badge-research{ background: rgba(184,134,11,0.15); color: var(--gold); }
   .badge-auction{ background: rgba(31,58,95,0.15); color: var(--navy); }
 
+  .badge-verifying{ background: rgba(184,134,11,0.15); color: var(--gold); }
+  .badge-confirmed{ background: rgba(62,92,58,0.15); color: var(--green); }
+  .badge-ruledout{ background: rgba(161,70,46,0.15); color: var(--rust); }
+  .badge-contacted{ background: rgba(31,58,95,0.15); color: var(--navy); }
+
+  .juris-tag{
+    display:inline-block;
+    font-family:'Courier Prime', monospace;
+    font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+  .step-list{ margin: 10px 0 4px; }
+  .step-row{
+    display:flex;
+    align-items:flex-start;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .step-row:last-child{ border-bottom:none; }
+  .step-row input[type=checkbox]{
+    margin-top: 3px;
+    width: 15px; height:15px;
+    accent-color: var(--green);
+    flex-shrink:0;
+  }
+  .step-row .step-text{ font-size: 12.5px; line-height:1.45; }
+  .step-row .step-text a{ color: var(--navy); text-decoration: underline; text-decoration-color: var(--line); font-size: 11px; }
+  .step-row.done .step-text b{ color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--rust); }
+
   .deal-grid{
     display:grid;
     grid-template-columns: repeat(3, 1fr);
@@ -371,10 +404,12 @@
   <div class="tabs" role="tablist">
     <button class="tab active" id="tabLogBtn" role="tab" aria-selected="true" type="button">Sourcing Log</button>
     <button class="tab" id="tabDealsBtn" role="tab" aria-selected="false" type="button">Deal Tracker</button>
+    <button class="tab" id="tabDocketBtn" role="tab" aria-selected="false" type="button">Unprobated Docket</button>
   </div>
 
   <div id="app"><div class="loading">Loading your log…</div></div>
   <div id="dealApp" style="display:none;"><div class="loading">Loading your deals…</div></div>
+  <div id="docketApp" style="display:none;"><div class="loading">Loading your docket…</div></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -873,24 +908,217 @@
   }
 
   // ---------- tabs ----------
+  // ---------- unprobated docket ----------
+  const JURISDICTIONS = {
+    marion: {
+      label: 'Marion County, FL',
+      steps: [
+        { key:'ownerMatch', label:'Owner search', hint:'Still listed under the decedent\'s name on the property card?', url:'https://www.pa.marion.fl.us/PropertySearch.aspx', urlLabel:'Property Appraiser →' },
+        { key:'deedCheck', label:'Deed check', hint:'Any transfer recorded since the date of death?', url:'https://nvweb.marioncountyclerk.org/BrowserView/', urlLabel:'Official Records →' },
+        { key:'probateCheck', label:'Probate check', hint:'Confirm no case was ever opened for this name.', url:'https://www.floridapublicnotices.com/', urlLabel:'FL Public Notices →' },
+        { key:'taxStatus', label:'Tax status', hint:'Delinquent taxes are a strong motivation signal.', url:'https://www.marioncountytax.gov/', urlLabel:'Tax Collector →' },
+      ]
+    },
+    boone: {
+      label: 'Boone County, MO',
+      steps: [
+        { key:'ownerMatch', label:'Owner search', hint:'Still listed under the decedent\'s name on the assessment record?', url:'https://report.boonecountymo.org/mrcjava/servlet/AS00_MP.I00240s', urlLabel:'Assessor Search →' },
+        { key:'deedCheck', label:'Deed check', hint:'Any transfer recorded since the date of death?', url:'https://www.showmeboone.com/recorder/', urlLabel:'Recorder of Deeds →' },
+        { key:'probateCheck', label:'Probate check', hint:'Confirm no case was ever opened for this name.', url:'https://www.courts.mo.gov/casenet/', urlLabel:'Case.net →' },
+        { key:'taxStatus', label:'Tax status', hint:'Delinquent taxes are a strong motivation signal.', url:'https://www.showmeboone.com/collector/real-estate-tax/delinquent.asp', urlLabel:'Collector →' },
+      ]
+    }
+  };
+
+  let caseFiles = [];
+
+  async function loadDocket(){
+    const saved = await storeGet('unprobated-docket');
+    caseFiles = saved || [];
+    renderDocket();
+  }
+
+  function docketStatusLabel(s){
+    return { verifying:'Verifying', confirmed:'Confirmed Unprobated', contacted:'Contacted', ruledout:'Ruled Out' }[s] || s;
+  }
+
+  function renderDocket(){
+    const app = document.getElementById('docketApp');
+    const activeCount = caseFiles.filter(c => c.status !== 'ruledout').length;
+    let html = `<div class="deal-toolbar">
+      <div class="deal-summary"><strong>${caseFiles.length}</strong> case files &nbsp;·&nbsp; <strong>${activeCount}</strong> active</div>
+      <button class="add-btn" id="addCaseBtn" type="button">+ Add Case File</button>
+    </div>`;
+
+    if (caseFiles.length === 0){
+      html += `<div class="empty">No case files yet. Add a name from an obituary to start tracking it through the four checks.</div>`;
+    } else {
+      caseFiles.forEach(c => {
+        const juris = JURISDICTIONS[c.jurisdiction] || JURISDICTIONS.marion;
+        html += `<div class="deal-card" data-id="${c.id}">
+          <button class="deal-x" type="button" data-id="${c.id}" title="Remove case file" aria-label="Remove ${c.decedentName}">✕</button>
+          <div class="deal-card-top">
+            <div class="deal-addr">${c.decedentName || '(unnamed)'}<br><span class="juris-tag">${juris.label}</span></div>
+            <span class="badge badge-${c.status}">${docketStatusLabel(c.status)}</span>
+          </div>
+          ${c.address ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">${c.address}</div>` : ''}
+          <div class="step-list">`;
+        juris.steps.forEach(step => {
+          const done = !!(c.steps && c.steps[step.key]);
+          html += `<div class="step-row ${done?'done':''}">
+            <input type="checkbox" data-case="${c.id}" data-step="${step.key}" ${done?'checked':''} id="step-${c.id}-${step.key}" />
+            <div class="step-text">
+              <label for="step-${c.id}-${step.key}"><b>${step.label}</b> — ${step.hint}</label><br>
+              <a href="${step.url}" target="_blank" rel="noopener">${step.urlLabel}</a>
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+        if (c.next) html += `<div class="deal-next"><b>Next:</b> ${c.next}</div>`;
+        html += `<div class="deal-actions">
+            <button class="link-btn edit-case" type="button">Edit</button>
+            <button class="link-btn danger delete-case" type="button">Delete</button>
+          </div>
+        </div>`;
+      });
+    }
+    app.innerHTML = html;
+
+    app.querySelectorAll('.step-row input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const caseId = cb.getAttribute('data-case');
+        const stepKey = cb.getAttribute('data-step');
+        const c = caseFiles.find(x => x.id === caseId);
+        if (!c) return;
+        c.steps = c.steps || {};
+        c.steps[stepKey] = cb.checked;
+        // auto-flag confirmed once all steps for that jurisdiction are checked
+        const juris = JURISDICTIONS[c.jurisdiction] || JURISDICTIONS.marion;
+        const allDone = juris.steps.every(s => c.steps[s.key]);
+        if (allDone && c.status === 'verifying') c.status = 'confirmed';
+        await storeSet('unprobated-docket', caseFiles);
+        renderDocket();
+      });
+    });
+
+    document.getElementById('addCaseBtn').addEventListener('click', () => openCaseModal(null));
+    app.querySelectorAll('.edit-case').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.deal-card').getAttribute('data-id');
+        openCaseModal(id);
+      });
+    });
+    app.querySelectorAll('.delete-case').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.closest('.deal-card').getAttribute('data-id');
+        caseFiles = caseFiles.filter(c => c.id !== id);
+        await storeSet('unprobated-docket', caseFiles);
+        renderDocket();
+      });
+    });
+    app.querySelectorAll('.deal-x').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const c = caseFiles.find(x => x.id === id);
+        if (c && !confirm(`Remove case file for ${c.decedentName || 'this entry'}?`)) return;
+        caseFiles = caseFiles.filter(x => x.id !== id);
+        await storeSet('unprobated-docket', caseFiles);
+        renderDocket();
+      });
+    });
+  }
+
+  function openCaseModal(id){
+    const c = id ? caseFiles.find(x => x.id === id) : { decedentName:'', jurisdiction:'marion', address:'', status:'verifying', next:'', steps:{} };
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.id = 'caseModalBackdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${id ? 'Edit Case File' : 'Add Case File'}</h3>
+        <div class="field"><label>Decedent Name</label><input id="c-name" value="${c.decedentName||''}" /></div>
+        <div class="field">
+          <label>Jurisdiction</label>
+          <select id="c-juris">
+            <option value="marion" ${c.jurisdiction==='marion'?'selected':''}>Marion County, FL</option>
+            <option value="boone" ${c.jurisdiction==='boone'?'selected':''}>Boone County, MO</option>
+          </select>
+        </div>
+        <div class="field"><label>Property Address (if known)</label><input id="c-address" value="${c.address||''}" /></div>
+        <div class="field">
+          <label>Status</label>
+          <select id="c-status">
+            <option value="verifying" ${c.status==='verifying'?'selected':''}>Verifying</option>
+            <option value="confirmed" ${c.status==='confirmed'?'selected':''}>Confirmed Unprobated</option>
+            <option value="contacted" ${c.status==='contacted'?'selected':''}>Contacted</option>
+            <option value="ruledout" ${c.status==='ruledout'?'selected':''}>Ruled Out</option>
+          </select>
+        </div>
+        <div class="field"><label>Next Action</label><textarea id="c-next">${c.next||''}</textarea></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="cancelCaseModal" type="button">Cancel</button>
+          <button class="btn-primary" id="saveCaseModal" type="button">${id ? 'Save Changes' : 'Add Case File'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    document.getElementById('cancelCaseModal').addEventListener('click', closeCaseModal);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeCaseModal(); });
+    document.getElementById('saveCaseModal').addEventListener('click', async () => {
+      const decedentName = document.getElementById('c-name').value.trim();
+      if (!decedentName){ document.getElementById('c-name').focus(); return; }
+      const payload = {
+        id: id || ('c' + Date.now()),
+        decedentName,
+        jurisdiction: document.getElementById('c-juris').value,
+        address: document.getElementById('c-address').value.trim(),
+        status: document.getElementById('c-status').value,
+        next: document.getElementById('c-next').value.trim(),
+        steps: c.steps || {},
+      };
+      if (id){
+        caseFiles = caseFiles.map(x => x.id === id ? payload : x);
+      } else {
+        caseFiles.push(payload);
+      }
+      await storeSet('unprobated-docket', caseFiles);
+      closeCaseModal();
+      renderDocket();
+    });
+  }
+
+  function closeCaseModal(){
+    const el = document.getElementById('caseModalBackdrop');
+    if (el) el.remove();
+  }
+
   const tabLogBtn = document.getElementById('tabLogBtn');
   const tabDealsBtn = document.getElementById('tabDealsBtn');
+  const tabDocketBtn = document.getElementById('tabDocketBtn');
   const appEl = document.getElementById('app');
   const dealAppEl = document.getElementById('dealApp');
+  const docketAppEl = document.getElementById('docketApp');
 
-  tabLogBtn.addEventListener('click', () => {
-    tabLogBtn.classList.add('active'); tabLogBtn.setAttribute('aria-selected','true');
-    tabDealsBtn.classList.remove('active'); tabDealsBtn.setAttribute('aria-selected','false');
-    appEl.style.display = ''; dealAppEl.style.display = 'none';
-  });
-  tabDealsBtn.addEventListener('click', () => {
-    tabDealsBtn.classList.add('active'); tabDealsBtn.setAttribute('aria-selected','true');
-    tabLogBtn.classList.remove('active'); tabLogBtn.setAttribute('aria-selected','false');
-    dealAppEl.style.display = ''; appEl.style.display = 'none';
-  });
+  function showTab(which){
+    tabLogBtn.classList.toggle('active', which==='log');
+    tabDealsBtn.classList.toggle('active', which==='deals');
+    tabDocketBtn.classList.toggle('active', which==='docket');
+    tabLogBtn.setAttribute('aria-selected', which==='log');
+    tabDealsBtn.setAttribute('aria-selected', which==='deals');
+    tabDocketBtn.setAttribute('aria-selected', which==='docket');
+    appEl.style.display = which==='log' ? '' : 'none';
+    dealAppEl.style.display = which==='deals' ? '' : 'none';
+    docketAppEl.style.display = which==='docket' ? '' : 'none';
+  }
+
+  tabLogBtn.addEventListener('click', () => showTab('log'));
+  tabDealsBtn.addEventListener('click', () => showTab('deals'));
+  tabDocketBtn.addEventListener('click', () => showTab('docket'));
 
   loadLogState();
   loadDeals();
+  loadDocket();
 })();
 </script>
 </body>
